@@ -71,7 +71,7 @@ new_dim <- main_table %>% dim()
 
 Формат таблицы после первичной очистки: `r {paste(new_dim[1], new_dim[2], sep = ' * ')}`
 
-## После первичной очистки  {.scrollable}
+## После первичной очистки {.scrollable}
 
 Преведены случайные 5 строк из таблицы:
 
@@ -169,12 +169,29 @@ PCA_indiv <- PCA %>%
   broom::augment(main_table)
 
 PCA_indiv <- PCA_indiv %>% slice(-outliers)
-main_table <- main_table %>% slice(-outliers)
 
-PCA <- main_table %>% 
-  select(where(is.numeric)) %>% 
-  dplyr::mutate(across(everything(), 
-                \(x) replace_na(x, mean(x, na.rm = TRUE)))) %>% 
+if (length(outliers) > 0) {
+  main_table <- main_table %>% slice(-outliers)
+}
+
+#NEW PCA
+
+factor_names <- main_table %>% 
+    select(where(is.factor)) %>% colnames()
+
+dummy_table <- main_table %>% 
+  select(grf9_6a_12del, where(is.numeric)) %>% 
+  filter(grf9_6a_12del %in% c(0,2)) %>% 
+  dplyr::mutate(across(where(is.numeric), 
+                \(x) replace_na(as.numeric(x), 
+                                mean(as.numeric(x), 
+                                     na.rm = TRUE)))) %>% 
+  fastDummies::dummy_cols(select_columns = 'grf9_6a_12del') %>% 
+  janitor::remove_constant() %>% 
+  select(-grf9_6a_12del)
+  
+
+PCA <- dummy_table %>% 
   prcomp(scale. = TRUE, rank. = 5)
 
 PCA_angles <- PCA %>% 
@@ -192,11 +209,21 @@ PCA_angles <- PCA %>%
                         length.y)/pi) %>%
   select(column.x, column.y, PC.x, PC.y, angle_degrees)
 
-
+# new_data <- main_table %>% 
+#   filter(grf9_6a_12del %in% c(0,2))
+# 
+# new_x <- new_data %>% 
+#   select(where(is.numeric)) %>% 
+#   dplyr::mutate(across(everything(), 
+#                 \(x) replace_na(x, mean(x, na.rm = TRUE)))) %>% 
+#   predict(PCA, newdata = .)
+#
+# new_PCA <-  PCA
+# 
+# new_PCA$x <- new_x 
+# 
 groups <- {
-  main_table %>%
-    dplyr::select(dplyr::one_of('grf9_6a_12del')) %>%
-    dplyr::pull()
+  dummy_table %>% transmute(grf9_6a_12del = if_else(grf9_6a_12del_0 == 1, '0', '2')) %>% pull()
 }
 
 fviz_pca_biplot(
