@@ -266,21 +266,24 @@ PCA_angles
 
 ## Описание групп {.scrollable}
 
-Рассмотрим модели типа \~ grf9_6a_12del + ddw1 + место + 1 для всех наблюдаемых параметров.
+Рассмотрим модели типа "\~ grf9_6a_12del \* vrna1 \* место" для всех наблюдаемых параметров для grf9_6a_12del на уровнях 0 и 2.
 
 ```{r}
 remove(list = ls()[!(ls() %in% c('main_table', 'PCA_indiv'))])
 
+main_table <- main_table %>% 
+  filter(grf9_6a_12del != "other")
+
 numeric_columns <- main_table %>% select(where(is.numeric)) %>% colnames()
 numeric_columns %>% purrr::map(\(x) {
 ggplot(main_table, aes(x=!!sym(x))) + 
-  geom_freqpoly(pad = TRUE) + 
-  facet_grid(grf9_6a_12del +  ddw1  ~ место, labeller = label_parsed, 
+  geom_density(pad = TRUE) + 
+  facet_grid(grf9_6a_12del +  vrna1  ~ место, labeller = label_parsed, 
              drop = TRUE, scales = 'free') -> ggplot_local
 
 main_table %>% 
   select(-where((is.numeric)), !!x) %>% 
-  group_by(grf9_6a_12del, ddw1, место) %>% 
+  group_by(grf9_6a_12del, vrna1, место) %>% 
   dplyr::summarise(n = sum(!is.na(!!sym(x))), 
             mean = mean(!!sym(x), na.rm = TRUE),
             median = median(!!sym(x), na.rm = TRUE),
@@ -289,14 +292,14 @@ main_table %>%
             skew = moments::skewness(!!sym(x), na.rm = TRUE),
             kurt = moments::kurtosis(!!sym(x), na.rm = TRUE)) -> main_table_local
 
-anova <- aov(as.formula(glue::glue("{x} ~ grf9_6a_12del +  ddw1  + место + 1")), data = main_table)
+anova <- aov(as.formula(glue::glue("{x} ~ grf9_6a_12del *  vrna1  * место")), data = main_table)
 
 anova %>% broom::tidy() -> anova_local 
 
 tukey <- TukeyHSD(anova) %>% broom::tidy()
 tukey  -> tukey_local
 
-if (tukey %>% filter(term == 'grf9_6a_12del') %>% pull(adj.p.value) %>% {any(. <= 0.05)}){
+if (tukey %>% filter(stringi::stri_detect_fixed(term, 'grf9_6a_12del')) %>% pull(adj.p.value) %>% {any(. <= 0.05)}){
   resume = 'significant effect of grf9_6a_12del'
   x = paste0(x,'*')
 } else {
