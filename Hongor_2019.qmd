@@ -266,7 +266,7 @@ PCA_angles
 
 ## Описание групп {.scrollable}
 
-Рассмотрим модели типа "\~ grf9_6a_12del \* vrna1 \* место" для всех наблюдаемых параметров для grf9_6a_12del на уровнях 0 и 2.
+Рассмотрим модели типа "\~ grf9_6a_12del \* ddw1 \* vrna1 \* место" для всех наблюдаемых параметров для grf9_6a_12del на уровнях 0 и 2.
 
 ```{r}
 remove(list = ls()[!(ls() %in% c('main_table', 'PCA_indiv'))])
@@ -278,7 +278,7 @@ numeric_columns <- main_table %>% select(where(is.numeric)) %>% colnames()
 numeric_columns %>% purrr::map(\(x) {
 ggplot(main_table, aes(x=!!sym(x))) + 
   geom_density(pad = TRUE) + 
-  facet_grid(grf9_6a_12del +  vrna1  ~ место, labeller = label_parsed, 
+  facet_grid(grf9_6a_12del +  ddw1 + vrna1  ~ место, labeller = label_parsed, 
              drop = TRUE, scales = 'free') -> ggplot_local
 
 main_table %>% 
@@ -292,7 +292,7 @@ main_table %>%
             skew = moments::skewness(!!sym(x), na.rm = TRUE),
             kurt = moments::kurtosis(!!sym(x), na.rm = TRUE)) -> main_table_local
 
-anova <- aov(as.formula(glue::glue("{x} ~ grf9_6a_12del *  vrna1  * место")), data = main_table)
+anova <- aov(as.formula(glue::glue("{x} ~ grf9_6a_12del * ddw1 * vrna1 * место")), data = main_table)
 
 anova %>% broom::tidy() -> anova_local 
 
