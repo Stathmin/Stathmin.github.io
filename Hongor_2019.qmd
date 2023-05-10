@@ -283,7 +283,7 @@ ggplot(main_table, aes(x=!!sym(x))) +
 
 main_table %>% 
   select(-where((is.numeric)), !!x) %>% 
-  group_by(grf9_6a_12del, vrna1, место) %>% 
+  group_by(grf9_6a_12del, ddw1, vrna1, место) %>% 
   dplyr::summarise(n = sum(!is.na(!!sym(x))), 
             mean = mean(!!sym(x), na.rm = TRUE),
             median = median(!!sym(x), na.rm = TRUE),
