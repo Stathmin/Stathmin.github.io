@@ -1,0 +1,392 @@
+---
+title: "Хонгор 2018 2019"
+author: "Stathmin"
+format:   
+  revealjs:
+    theme: dark
+    code-fold: true
+    toc: false
+    number-sections: false
+    header-includes: |
+      <link rel="stylesheet" media="screen" href="https://fontlibrary.org//face/anonymous-pro" type="text/css"/>
+editor: visual
+mainfont: AnonymousProRegular
+fontsize: 1.4em
+df-print: paged
+---
+
+## Исходные данные
+
+```{r}
+library("factoextra")
+set.seed(42)
+library('tidyverse')
+library('janitor')
+
+excel_file <- Sys.glob('Популяция_Хонгор_2_года_Москва_и_Краснодар.xlsx')
+
+main_table <- readxl::excel_sheets(excel_file) %>% 
+  purrr::map_dfr(
+    \(x){
+      readxl::read_excel(excel_file, 
+                         sheet = x)
+      }
+    ) %>%
+  clean_names(ascii = FALSE) %>% 
+  mutate(across(where(is.character), 
+                ~na_if(., 'недостаточно данных'))) %>% 
+  mutate(across(where(is.character), 
+                ~na_if(., 'х')))
+
+readxl::read_excel(excel_file) 
+
+init_dim <- dim(main_table)
+init_colnames <- main_table %>% colnames()
+
+cutoff <- .6
+
+main_table <- main_table %>% 
+  remove_empty(which = "rows", cutoff = cutoff) %>% 
+  remove_empty(which = "cols", cutoff = cutoff) %>% 
+  remove_constant()
+
+identical_columns <- main_table %>% 
+  get_one_to_one()
+
+to_drop <- identical_columns %>% 
+  map(\(x) x[-1]) %>% 
+  unlist()
+
+identical_columns_char <- map(identical_columns, 
+    \(x) glue::glue("- {paste(x, collapse = ', ')}")) %>% 
+  paste(collapse = '\n\n')
+
+main_table <- main_table %>% 
+  select(-all_of(to_drop))
+
+new_dim <- main_table %>% dim()
+```
+
+Результаты эксперимента были представлены в файле "`r excel_file`".
+
+`r init_dim[1]` - исходное число строк
+
+`r init_dim[2]` - исходное число столбцов
+
+Колонки были переименованы для удобства анализа, также были последовательно удалены строки и столбцы с долей полных ячеек выше `r (100 * cutoff) %>% round()`%.
+
+`r ifelse(identical_columns_char != '', glue::glue('Для групп идентичных колонок:\n\n{identical_columns_char}\n\nбыли сохранены только первые колонки.'), '')`
+
+Формат таблицы после первичной очистки: `r {paste(new_dim[1], new_dim[2], sep = ' * ')}`
+
+## После первичной очистки {.scrollable}
+
+Преведены случайные 5 строк из таблицы:
+
+```{r}
+set.seed(Sys.time())
+remove(list = ls()[ls() != 'main_table'])
+
+main_table %>% slice_sample(n = 5)
+
+set.seed(42)
+```
+
+Также даны числа уникальных значений в столбцах:
+
+```{r}
+main_table %>% 
+  dplyr::summarise(across(everything(), n_distinct)) -> table_n_uniq
+table_n_uniq
+```
+
+И числа наблюдений в столбцах:
+
+```{r}
+main_table %>% 
+  dplyr::summarise(across(everything(), \(x) sum(!is.na(x)) )) -> table_n_obs
+table_n_obs
+```
+
+## Корреляции переменных {.scrollable}
+
+```{r, results = "asis"}
+remove(list = ls()[ls() != 'main_table'])
+
+min_cor = 0.6
+
+print(glue::glue("Графы корреляции строились на основе методов Пирсона, Кендалла и Спирмана c отсечкой минимальной корреляции в {min_cor}."))
+
+index <-  'п_п'
+factors <- c('раст_2017', 'семья', 'место', 'год', 'ddw1', 'vrna1', 'grf', 'grf9_6a_12del')
+
+main_table <- main_table %>% 
+  mutate(across(c(index, factors), forcats::as_factor)) %>% 
+  mutate(grf9_6a_12del = forcats::fct_lump_prop(grf9_6a_12del, .1, other_level = "other"))
+
+print(glue::glue("Индекс {index} и входные переменные {paste(factors, collapse=', ')} были предварительно закодированы как факторы. При этом для grf9_6a_12del уровни с частотой ниже 10% переопределялись как 'other'\n\n"))
+
+c('pearson', 'kendall', 'spearman') %>% purrr::map_vec(\(x) {
+  print(glue::glue("- {str_to_title(x)}\n\n")) 
+
+  main_table %>% select(where(is.numeric)) %>% 
+    corrr::correlate(method = x, use = "na.or.complete") %>% 
+    corrr::rearrange() %>% 
+    corrr::network_plot(curved = FALSE, min_cor = min_cor) %>% print()
+    
+  return(NA)
+}) -> removal
+remove(removal)
+
+```
+
+## PCA {.scrollable}
+
+PCA проводился после заполнения пустующих ячеек в каждом столбике соответствующим медианным значением.
+
+```{r, results = "asis"}
+remove(list = ls()[ls() != 'main_table'])
+
+PCA <- main_table %>% 
+  select(where(is.numeric)) %>% 
+  dplyr::mutate(across(everything(), 
+                \(x) replace_na(x, mean(x, na.rm = TRUE)))) %>% 
+  prcomp(scale. = TRUE, rank. = 5)
+
+PCA_eigen <- PCA %>%
+  broom::tidy(matrix = "eigenvalues") %>% 
+  mutate(across(everything(), \(x) round(x, 2))) %>% 
+  slice(1:5) 
+
+PCA_rotation <- PCA %>%
+  broom::tidy(matrix = "rotation") %>%
+  mutate(value = round(value,2)) %>% 
+  pivot_wider(names_from = 'PC',
+              values_from = 'value')
+
+PCA_eigen
+
+PCA_rotation
+
+outliers <- bigutilsr::LOF(PCA$x) %>% 
+  {which(abs(.) > 1)}
+
+cat("Обнаружены и удалены выбросы:\n\n")
+
+slice(main_table, outliers)
+PCA_indiv <- PCA %>%
+  broom::augment(main_table)
+
+PCA_indiv <- PCA_indiv %>% slice(-outliers)
+
+if (length(outliers) > 0) {
+  main_table <- main_table %>% slice(-outliers)
+}
+
+#NEW PCA
+
+factor_names <- main_table %>% 
+    select(where(is.factor)) %>% colnames()
+
+dummy_table <- main_table %>% 
+  select(grf9_6a_12del, where(is.numeric)) %>% 
+  filter(grf9_6a_12del %in% c(0,2)) %>% 
+  dplyr::mutate(across(where(is.numeric), 
+                \(x) replace_na(as.numeric(x), 
+                                mean(as.numeric(x), 
+                                     na.rm = TRUE)))) %>% 
+  fastDummies::dummy_cols(select_columns = 'grf9_6a_12del') %>% 
+  janitor::remove_constant() %>% 
+  select(-grf9_6a_12del)
+  
+
+PCA <- dummy_table %>% 
+  prcomp(scale. = TRUE, rank. = 5)
+
+PCA_angles <- PCA %>% 
+  broom::tidy(matrix = "rotation") %>%
+  filter(PC < 4) %>% 
+  left_join(., ., by = c('column' = 'column')) %>% 
+  filter(PC.x < PC.y) %>% 
+  left_join(., ., by = c('PC.x' = 'PC.x', 'PC.y' = 'PC.y')) %>% 
+  filter(column.x != column.y) %>% 
+  mutate(length.x = (value.x.x**2 + value.y.x**2)**0.5,
+         length.y = (value.x.y**2 + value.y.y**2)**0.5) %>% 
+  mutate(angle_degrees = 180*acos((value.x.x*value.x.y + 
+                         value.y.x*value.y.y)/
+                        length.x/
+                        length.y)/pi) %>%
+  select(column.x, column.y, PC.x, PC.y, angle_degrees)
+
+# new_data <- main_table %>% 
+#   filter(grf9_6a_12del %in% c(0,2))
+# 
+# new_x <- new_data %>% 
+#   select(where(is.numeric)) %>% 
+#   dplyr::mutate(across(everything(), 
+#                 \(x) replace_na(x, mean(x, na.rm = TRUE)))) %>% 
+#   predict(PCA, newdata = .)
+#
+# new_PCA <-  PCA
+# 
+# new_PCA$x <- new_x 
+# 
+groups <- {
+  dummy_table %>% transmute(grf9_6a_12del = if_else(grf9_6a_12del_0 == 1, '0', '2')) %>% pull()
+}
+
+fviz_pca_biplot(
+  PCA,
+  habillage = groups,
+  addEllipses = TRUE,
+  geom = c("point"),
+  ellipse.type = "confidence",
+  ellipse.level = 0.95,
+  legend.title = "grf9_6a_12del",
+  repel = TRUE,
+  label = "var",
+  col.var = 'black',
+  pallete = 'RdBu',
+  col.circle = 'black',
+  alpha.ind = 0.6
+) + coord_fixed()
+
+fviz_pca_biplot(
+  PCA,
+  axes = c(1, 3),
+  habillage = groups,
+  addEllipses = TRUE,
+  geom = c("point"),
+  ellipse.type = "confidence",
+  ellipse.level = 0.95,
+  legend.title = "grf9_6a_12del",
+  repel = TRUE,
+  label = "var",
+  col.var = 'black',
+  pallete = 'RdBu',
+  col.circle = 'black',
+  alpha.ind = 0.6
+)
+
+PCA_angles
+
+
+```
+
+## Описание групп {.scrollable}
+
+Рассмотрим модели типа "\~ grf9_6a_12del \* ddw1 \* vrna1 \* место \* год" для всех наблюдаемых параметров для grf9_6a_12del на уровнях 0 и 2.
+
+```{r}
+remove(list = ls()[!(ls() %in% c('main_table', 'PCA_indiv'))])
+
+main_table <- main_table %>% 
+  filter(grf9_6a_12del != "other")
+
+numeric_columns <- main_table %>% select(where(is.numeric)) %>% colnames()
+numeric_columns %>% purrr::map(\(x) {
+ggplot(main_table, aes(x=!!sym(x))) + 
+  geom_density(pad = TRUE) + 
+  facet_grid(grf9_6a_12del +  ddw1 + vrna1  ~ место + год, labeller = label_parsed, 
+             drop = TRUE, scales = 'free') -> ggplot_local
+
+main_table %>% 
+  select(-where((is.numeric)), !!x) %>% 
+  group_by(grf9_6a_12del, ddw1, vrna1, место, год) %>% 
+  dplyr::summarise(n = sum(!is.na(!!sym(x))), 
+            mean = mean(!!sym(x), na.rm = TRUE),
+            median = median(!!sym(x), na.rm = TRUE),
+            sd = sd(!!sym(x), na.rm = TRUE),
+            cv = sd(!!sym(x), na.rm = TRUE)/mean(!!sym(x), na.rm = TRUE),
+            skew = moments::skewness(!!sym(x), na.rm = TRUE),
+            kurt = moments::kurtosis(!!sym(x), na.rm = TRUE)) -> main_table_local
+
+anova <- aov(as.formula(glue::glue("{x} ~ grf9_6a_12del * ddw1 * vrna1 * место * год")), data = main_table)
+
+anova %>% broom::tidy() -> anova_local 
+
+tukey <- TukeyHSD(anova) %>% broom::tidy()
+tukey  -> tukey_local
+
+if (tukey %>% filter(stringi::stri_detect_fixed(term, 'grf9_6a_12del')) %>% pull(adj.p.value) %>% {any(. <= 0.05)}){
+  resume = 'significant effect of grf9_6a_12del'
+  x = paste0(x,'*')
+} else {
+  resume = 'non-significant effect of grf9_6a_12del'
+}
+ return(
+   list(name = x, 
+        ggplot_local = ggplot_local, 
+        main_table_local = main_table_local,
+        anova_local = anova_local,
+        anova_raw = anova,
+        tukey_local = tukey_local,
+        resume = resume
+        )
+ )}
+) -> data_bomb
+
+```
+
+::: column-screen
+::: panel-tabset
+```{r}
+#| results: asis
+#| warning: false
+#| fig-width: 14
+
+for (i in seq_along(data_bomb)) {
+  cat("# ",data_bomb[[i]]$name,"  \n")
+  data_bomb[[{i}]]$ggplot_local %>% print()
+  cat('\n\n\n\nDescription\n\n')
+  data_bomb[[{i}]]$main_table_local %>%
+    mutate(across(where(is.numeric), \(x) as.character(signif(x, 3)) )) %>%
+    flextable::flextable() %>% 
+    flextable::theme_tron() %>% 
+    flextable::htmltools_value() %>% 
+    htmltools::htmlPreserve() %>% 
+    knitr::asis_output() %>% 
+    cat()
+  cat('\n\n')
+  cat('\n\nANOVA\n\n')
+  data_bomb[[{i}]]$anova_local %>%
+    mutate(across(where(is.numeric), \(x) as.character(signif(x, 3)) )) %>%
+    flextable::flextable() %>% 
+    flextable::theme_tron() %>% 
+    flextable::htmltools_value() %>% 
+    htmltools::htmlPreserve() %>% 
+    knitr::asis_output() %>% 
+    cat()
+  
+  anova_residuals <- data_bomb[[{i}]]$anova_raw$residuals
+  car::qqPlot(anova_residuals,
+    id = FALSE
+  )
+  
+  cat('\n\n')
+  cat('\n\nTukey\n\n')
+  data_bomb[[{i}]]$tukey_local %>%
+    mutate(across(where(is.numeric), \(x) as.character(signif(x, 3)) )) %>% 
+    flextable::flextable() %>% 
+    flextable::theme_tron() %>% 
+    flextable::htmltools_value() %>% 
+    htmltools::htmlPreserve() %>% 
+    knitr::asis_output() %>% 
+    cat()
+  cat('\n\n')
+  cat('\n\n', data_bomb[[{i}]]$resume, '\n\n')
+  
+  cat("  \n")
+}
+```
+:::
+:::
+
+```{r}
+data_bomb %>% map_vec(~.x$name) %>% {.[which(grepl("\\*", .))]} -> significant
+
+```
+
+# Итоги:
+
+`r ifelse(length(significant) > 0, glue::glue("Найдены следующие наблюдаемые переменные со значимыми различиями от уровня grf9_6a_12del: {paste(significant, collapse=', ')}"), 'Не обнаружено наблюдаемых переменных со значимыми различиями от уровня grf9_6a_12del')`
