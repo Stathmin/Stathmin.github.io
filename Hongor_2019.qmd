@@ -23,7 +23,7 @@ set.seed(42)
 library('tidyverse')
 library('janitor')
 
-excel_file <- Sys.glob('*.xlsx')
+excel_file <- Sys.glob('Популяция Хонгор 2019 Москва.xlsx')
 
 main_table <- readxl::read_excel(excel_file) %>% 
   clean_names(ascii = FALSE) %>% 
