@@ -248,7 +248,8 @@ fviz_pca_biplot(
   col.var = 'black',
   pallete = 'RdBu',
   col.circle = 'black',
-  alpha.ind = 0.6
+  alpha.ind = 0.6,
+  select.var = list(cos2 = 10)
 ) + coord_fixed()
 
 fviz_pca_biplot(
@@ -265,7 +266,8 @@ fviz_pca_biplot(
   col.var = 'black',
   pallete = 'RdBu',
   col.circle = 'black',
-  alpha.ind = 0.6
+  alpha.ind = 0.6,
+  select.var = list(cos2 = 10)
 )
 
 PCA_angles
@@ -275,7 +277,7 @@ PCA_angles
 
 ## Описание групп {.scrollable}
 
-Рассмотрим модели типа "\~ grf9_6a_12del \* ddw1 \* vrna1 \* место \* год" для всех наблюдаемых параметров для grf9_6a_12del на уровнях 0 и 2.
+Рассмотрим модели типа "\~ (grf9_6a_12del + ddw1 + vrna1 + место + год)\*\*3" для всех наблюдаемых параметров для grf9_6a_12del на уровнях 0 и 2.
 
 ```{r}
 remove(list = ls()[!(ls() %in% c('main_table', 'PCA_indiv'))])
@@ -301,7 +303,7 @@ main_table %>%
             skew = moments::skewness(!!sym(x), na.rm = TRUE),
             kurt = moments::kurtosis(!!sym(x), na.rm = TRUE)) -> main_table_local
 
-anova <- aov(as.formula(glue::glue("{x} ~ grf9_6a_12del * ddw1 * vrna1 * место * год")), data = main_table)
+anova <- aov(as.formula(glue::glue("{x} ~ (grf9_6a_12del + ddw1 + vrna1 + место + год)**3")), data = main_table)
 
 anova %>% broom::tidy() -> anova_local 
 
